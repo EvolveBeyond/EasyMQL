@@ -162,7 +162,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## 📞 Contact
 
-EasyMQL Team - info@easymql.com
+EasyMQL Team - pakrohk@github.com
 
 Project Link: [https://github.com/EvolveBeyond/EasyMQL](https://github.com/EvolveBeyond/EasyMQL)
 
