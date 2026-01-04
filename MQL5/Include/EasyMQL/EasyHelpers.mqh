@@ -1,13 +1,22 @@
 //+------------------------------------------------------------------+
 //|                                              EasyMQL Helpers     |
-//|                                    Copyright 2026, EasyMQL Team  |
+//|                                    Copyright 2026, EvolveBeyond  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2026, EasyMQL Team"
+#property copyright "Copyright 2026, EvolveBeyond"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 
 #include <EasyCore.mqh>
+
+//+------------------------------------------------------------------+
+//| Python-like price access macros                                    |
+//+------------------------------------------------------------------+
+#define O(n) EasyHelpers::open(n)
+#define H(n) EasyHelpers::high(n)
+#define L(n) EasyHelpers::low(n)
+#define C(n) EasyHelpers::close(n)
+#define MA(n, m) EasyHelpers::sma(n, m)
 
 // Forward declarations
 class EasyHelpers;
@@ -87,26 +96,56 @@ private:
 //+------------------------------------------------------------------+
 double EasyHelpers::price(PriceType type, int shift)
 {
+   double buffer[];
+   int copied;
    switch(type)
    {
       case Open:
-         return iOpen(Symbol(), PERIOD_CURRENT, shift);
+         copied = CopyOpen(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+         return (copied > 0) ? buffer[0] : 0.0;
       case High:
-         return iHigh(Symbol(), PERIOD_CURRENT, shift);
+         copied = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+         return (copied > 0) ? buffer[0] : 0.0;
       case Low:
-         return iLow(Symbol(), PERIOD_CURRENT, shift);
+         copied = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+         return (copied > 0) ? buffer[0] : 0.0;
       case Close:
-         return iClose(Symbol(), PERIOD_CURRENT, shift);
+         copied = CopyClose(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+         return (copied > 0) ? buffer[0] : 0.0;
       case Median:
-         return (iHigh(Symbol(), PERIOD_CURRENT, shift) + iLow(Symbol(), PERIOD_CURRENT, shift)) / 2.0;
+         {
+            double high_val, low_val;
+            int copied_high = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            high_val = (copied_high > 0) ? buffer[0] : 0.0;
+            int copied_low = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            low_val = (copied_low > 0) ? buffer[0] : 0.0;
+            return (high_val + low_val) / 2.0;
+         }
       case Typical:
-         return (iHigh(Symbol(), PERIOD_CURRENT, shift) + iLow(Symbol(), PERIOD_CURRENT, shift) + 
-                 iClose(Symbol(), PERIOD_CURRENT, shift)) / 3.0;
+         {
+            double high_val, low_val, close_val;
+            int copied_high = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            high_val = (copied_high > 0) ? buffer[0] : 0.0;
+            int copied_low = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            low_val = (copied_low > 0) ? buffer[0] : 0.0;
+            int copied_close = CopyClose(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            close_val = (copied_close > 0) ? buffer[0] : 0.0;
+            return (high_val + low_val + close_val) / 3.0;
+         }
       case Weighted:
-         return (iHigh(Symbol(), PERIOD_CURRENT, shift) + iLow(Symbol(), PERIOD_CURRENT, shift) + 
-                 2 * iClose(Symbol(), PERIOD_CURRENT, shift)) / 4.0;
+         {
+            double high_val, low_val, close_val;
+            int copied_high = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            high_val = (copied_high > 0) ? buffer[0] : 0.0;
+            int copied_low = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            low_val = (copied_low > 0) ? buffer[0] : 0.0;
+            int copied_close = CopyClose(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+            close_val = (copied_close > 0) ? buffer[0] : 0.0;
+            return (high_val + low_val + 2 * close_val) / 4.0;
+         }
       default:
-         return iClose(Symbol(), PERIOD_CURRENT, shift);
+         copied = CopyClose(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+         return (copied > 0) ? buffer[0] : 0.0;
    }
 }
 
@@ -115,7 +154,9 @@ double EasyHelpers::price(PriceType type, int shift)
 //+------------------------------------------------------------------+
 double EasyHelpers::open(int shift)
 {
-   return iOpen(Symbol(), PERIOD_CURRENT, shift);
+   double buffer[];
+   int copied = CopyOpen(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+   return (copied > 0) ? buffer[0] : 0.0;
 }
 
 //+------------------------------------------------------------------+
@@ -123,7 +164,9 @@ double EasyHelpers::open(int shift)
 //+------------------------------------------------------------------+
 double EasyHelpers::high(int shift)
 {
-   return iHigh(Symbol(), PERIOD_CURRENT, shift);
+   double buffer[];
+   int copied = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+   return (copied > 0) ? buffer[0] : 0.0;
 }
 
 //+------------------------------------------------------------------+
@@ -131,7 +174,9 @@ double EasyHelpers::high(int shift)
 //+------------------------------------------------------------------+
 double EasyHelpers::low(int shift)
 {
-   return iLow(Symbol(), PERIOD_CURRENT, shift);
+   double buffer[];
+   int copied = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+   return (copied > 0) ? buffer[0] : 0.0;
 }
 
 //+------------------------------------------------------------------+
@@ -139,7 +184,9 @@ double EasyHelpers::low(int shift)
 //+------------------------------------------------------------------+
 double EasyHelpers::close(int shift)
 {
-   return iClose(Symbol(), PERIOD_CURRENT, shift);
+   double buffer[];
+   int copied = CopyClose(_Symbol, PERIOD_CURRENT, shift, 1, buffer);
+   return (copied > 0) ? buffer[0] : 0.0;
 }
 
 //+------------------------------------------------------------------+
@@ -147,7 +194,12 @@ double EasyHelpers::close(int shift)
 //+------------------------------------------------------------------+
 double EasyHelpers::median(int shift)
 {
-   return (iHigh(Symbol(), PERIOD_CURRENT, shift) + iLow(Symbol(), PERIOD_CURRENT, shift)) / 2.0;
+   double high_buffer[], low_buffer[];
+   int copied_high = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, high_buffer);
+   int copied_low = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, low_buffer);
+   double high_val = (copied_high > 0) ? high_buffer[0] : 0.0;
+   double low_val = (copied_low > 0) ? low_buffer[0] : 0.0;
+   return (high_val + low_val) / 2.0;
 }
 
 //+------------------------------------------------------------------+
@@ -155,8 +207,14 @@ double EasyHelpers::median(int shift)
 //+------------------------------------------------------------------+
 double EasyHelpers::typical(int shift)
 {
-   return (iHigh(Symbol(), PERIOD_CURRENT, shift) + iLow(Symbol(), PERIOD_CURRENT, shift) + 
-           iClose(Symbol(), PERIOD_CURRENT, shift)) / 3.0;
+   double high_buffer[], low_buffer[], close_buffer[];
+   int copied_high = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, high_buffer);
+   int copied_low = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, low_buffer);
+   int copied_close = CopyClose(_Symbol, PERIOD_CURRENT, shift, 1, close_buffer);
+   double high_val = (copied_high > 0) ? high_buffer[0] : 0.0;
+   double low_val = (copied_low > 0) ? low_buffer[0] : 0.0;
+   double close_val = (copied_close > 0) ? close_buffer[0] : 0.0;
+   return (high_val + low_val + close_val) / 3.0;
 }
 
 //+------------------------------------------------------------------+
@@ -164,8 +222,14 @@ double EasyHelpers::typical(int shift)
 //+------------------------------------------------------------------+
 double EasyHelpers::weighted(int shift)
 {
-   return (iHigh(Symbol(), PERIOD_CURRENT, shift) + iLow(Symbol(), PERIOD_CURRENT, shift) + 
-           2 * iClose(Symbol(), PERIOD_CURRENT, shift)) / 4.0;
+   double high_buffer[], low_buffer[], close_buffer[];
+   int copied_high = CopyHigh(_Symbol, PERIOD_CURRENT, shift, 1, high_buffer);
+   int copied_low = CopyLow(_Symbol, PERIOD_CURRENT, shift, 1, low_buffer);
+   int copied_close = CopyClose(_Symbol, PERIOD_CURRENT, shift, 1, close_buffer);
+   double high_val = (copied_high > 0) ? high_buffer[0] : 0.0;
+   double low_val = (copied_low > 0) ? low_buffer[0] : 0.0;
+   double close_val = (copied_close > 0) ? close_buffer[0] : 0.0;
+   return (high_val + low_val + 2 * close_val) / 4.0;
 }
 
 //+------------------------------------------------------------------+
@@ -536,6 +600,7 @@ bool EasyHelpers::drawArrowUp(double price, Color color, string name)
    if(name == "")
       name = "ArrowUp_" + IntegerToString(TimeCurrent());
       
+   if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
    return ObjectCreate(0, name, OBJ_ARROW_UP, 0, TimeCurrent(), price);
 }
 
@@ -547,6 +612,7 @@ bool EasyHelpers::drawArrowDown(double price, Color color, string name)
    if(name == "")
       name = "ArrowDown_" + IntegerToString(TimeCurrent());
       
+   if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
    return ObjectCreate(0, name, OBJ_ARROW_DOWN, 0, TimeCurrent(), price);
 }
 
@@ -586,9 +652,13 @@ bool EasyHelpers::drawText(double price, string text, Color color, string name)
       name = "Text_" + IntegerToString(TimeCurrent());
       
    datetime time = TimeCurrent();
+   if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
    ObjectCreate(0, name, OBJ_TEXT, 0, time, price);
    ObjectSetString(0, name, OBJPROP_TEXT, text);
    ObjectSetInteger(0, name, OBJPROP_COLOR, color);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, 0);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, 10);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, 10);
    return true;
 }
 
@@ -775,3 +845,6 @@ double EasyHelpers::emaMultiplier(int period)
 #define logInfo(msg) EasyHelpers::logInfo(msg)
 #define logWarning(msg) EasyHelpers::logWarning(msg)
 #define logError(msg) EasyHelpers::logError(msg)
+
+// Note: For MA macro, users should call EasyHelpers::sma() function directly
+// since MQL5 doesn't support complex macro expressions well

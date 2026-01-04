@@ -1,173 +1,110 @@
 # EasyMQL Framework
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MQL5](https://img.shields.io/badge/MQL5-Framework-blue)](https://www.mql5.com)
+A lightweight library for simplifying indicator and EA development in MetaTrader 5, inspired by the simplicity of Python/FastAPI, the lightness of Lua, and the modularity of TypeScript/NestJS.
 
-EasyMQL is a modern, simplified framework for MQL5 that makes creating custom indicators and Expert Advisors much easier while preserving full access to all native MQL5 capabilities.
+## Features
 
-## 🚀 Features
+### 1. Auto-Registration with Macros
+- `EASY_INDICATOR(ClassName)` - Automatic indicator registration
+- `EASY_EXPERT(ClassName)` - Automatic EA registration
+- No need for manual OnInit/OnDeinit/OnCalculate boilerplate
 
-- **Simple API**: Clean, readable syntax that's easy to understand
-- **Modern OOP**: Uses inheritance, virtual methods, and chainable configuration
-- **Built-in Helpers**: Common indicators, price access, and utility functions
-- **Automatic Event Wiring**: No need to write boilerplate OnInit/OnCalculate code
-- **Type Safety**: Enums for readability (Color, DrawType, PriceType, etc.)
+### 2. Chainable (Fluent) API
+- Method chaining for clean, readable code
+- All setters return `*this` for chaining
 
-## 📁 Structure
+### 3. Python-like Price Macros
+- `O(n)` - Open price at shift n
+- `H(n)` - High price at shift n  
+- `L(n)` - Low price at shift n
+- `C(n)` - Close price at shift n
+- `MA(n, m)` - Moving average with period n at shift m
 
-```
-MQL5/
-├── Include/
-│   └── EasyMQL/
-│       ├── EasyMQL.mqh          # Main include file (only this one is used in projects)
-│       ├── EasyCore.mqh         # Base classes: EasyIndicator, EasyExpert
-│       ├── EasyHelpers.mqh      # Helper functions: price(), sma(), log(), drawText(), etc.
-│       └── EasyConfig.mqh       # Enums: DrawType, Color, PriceType, OrderType
-├── Examples/
-│   ├── SimpleMAExample.mq5      # Simple moving average indicator example
-│   └── SimpleMACrossEA.mq5      # Moving average crossover Expert Advisor example
-└── README.md                    # Framework documentation
-```
+### 4. Typed Configuration with Validation
+- Parameter validation with range checks
+- Required field validation
+- Error logging for validation failures
 
-## 🛠️ Installation
+### 5. Lightweight Service Access
+- `EasyServices::Config()` - Global config access
+- `EasyServices::Events()` - Event manager access
 
-1. Download this repository
-2. Copy the entire MQL5 folder to your MetaTrader 5 Data Folder:
-   - Windows: `C:\Users\[YourUsername]\AppData\Roaming\MetaQuotes\Terminal\[TerminalID]\MQL5\`
-   - Or find your MT5 Data Folder via: File → Open Data Folder
-3. Restart MetaTrader 5
-4. The EasyMQL framework will be available for use in your indicators and Expert Advisors
+### 6. Multi-Strategy Support
+- Strategy-based architecture
+- Register multiple strategies with `.Use()` method
+- Automatic execution in onTick/onTimer
 
-## 📚 Usage Examples
+## Usage Examples
 
-### Creating a Custom Indicator
-
+### Simple Indicator
 ```mql5
-#include <EasyMQL/EasyMQL.mqh>
-
-class SimpleMAExample : public EasyIndicator
+class SimpleMA : public EasyIndicator
 {
-private:
-   int m_period;
-
 public:
-   SimpleMAExample(void) { m_period = 14; }
-   
-   virtual bool onSetup(void)
+   bool onSetup()
    {
-      setTitle("Simple MA Example")
-         .addBuffer(Line, clrBlue, 2, "MA");
+      setTitle("Simple MA")
+         .addBuffer(Line, Blue, 1, "SMA");
       return true;
    }
    
-   virtual bool onUpdate(int total, int prev)
+   bool onUpdate(int total, int prev)
    {
-      for(int i = m_period; i < total; i++)
-      {
-         double sum = 0.0;
-         for(int j = 0; j < m_period; j++)
-         {
-            sum += EasyHelpers::close(i + j);
-         }
-         setBufferValue(0, i, sum / m_period);
-      }
+      // Use Python-like macros: O(0), H(0), L(0), C(0)
+      double ma_value = MA(14, 0);  // MA period 14, current bar
       return true;
    }
 };
+
+EASY_INDICATOR(SimpleMA)  // Auto-registration
 ```
 
-### Creating an Expert Advisor
-
+### Simple EA with Strategy
 ```mql5
-#include <EasyMQL/EasyMQL.mqh>
-
-class SimpleMACrossEA : public EasyExpert
+class MATradingStrategy : public EasyStrategy
 {
 public:
-   virtual bool onSetup(void)
+   void onTick()
    {
-      setLots(0.1).setStopLoss(100).setTakeProfit(200);
-      return true;
-   }
-   
-   virtual void onTick(void)
-   {
-      // Trading logic here
-      if(/* buy condition */)
+      if(C(0) > MA(14, 0) && C(1) <= MA(14, 1))  // Cross above MA
       {
-         openBuy(0.1);
+         if(!hasPositionBySymbol(_Symbol))
+            openBuy();
       }
    }
 };
+
+class SimpleMAEA : public EasyExpert
+{
+public:
+   bool onSetup()
+   {
+      setSymbol(_Symbol)
+         .Use(new MATradingStrategy());  // Multi-strategy support
+         
+      // Config validation
+      EasyServices::Config()
+         .addParamInt("MAPeriod", 14, "MA Period", true, 1, 100)
+         .validate();
+         
+      return true;
+   }
+};
+
+EASY_EXPERT(SimpleMAEA)  // Auto-registration
 ```
 
-## 🧩 Key Components
+## Files
 
-### EasyIndicator
-- Base class for custom indicators
-- Chainable configuration methods
-- Automatic buffer management
-- Clean event handling
+- `EasyConfig.mqh` - Configuration management with validation
+- `EasyCore.mqh` - Core classes (EasyIndicator, EasyExpert, EasyStrategy)
+- `EasyHelpers.mqh` - Helper functions and Python-like macros
+- `EasyMQL.mqh` - Auto-registration macros and event handlers
 
-### EasyExpert
-- Base class for Expert Advisors
-- Simplified order management
-- Position tracking utilities
-- Error handling built-in
+## Installation
 
-### EasyHelpers
-- Common technical indicators (SMA, EMA, RSI, MACD, etc.)
-- Price access utilities
-- Drawing helpers
-- Logging functions
-- Math utilities
+Copy the `EasyMQL` folder to your MQL5 Include directory.
 
-## 📖 Available Helper Functions
+## License
 
-### Price Access
-- `EasyHelpers::close(shift)` - Get close price
-- `EasyHelpers::high(shift)` - Get high price
-- `EasyHelpers::low(shift)` - Get low price
-- `EasyHelpers::open(shift)` - Get open price
-
-### Common Indicators
-- `EasyHelpers::sma(source, period, result)` - Simple Moving Average
-- `EasyHelpers::ema(source, period, result)` - Exponential Moving Average
-- `EasyHelpers::rsi(source, period, result)` - Relative Strength Index
-- `EasyHelpers::macd(source, fast, slow, signal, macd_line, signal_line, histogram)` - MACD
-
-### Trading Functions
-- `openBuy(lots)` - Open buy position
-- `openSell(lots)` - Open sell position
-- `closeAll()` - Close all positions
-- `hasPosition()` - Check if there are open positions
-
-### Enums
-- `DrawType`: Line, Histogram, Arrow, Dots, etc.
-- `Color`: Red, Green, Blue, Yellow, etc.
-- `PriceType`: Open, High, Low, Close, etc.
-- `OrderType`: Buy, Sell, BuyLimit, etc.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
-## 📞 Contact
-
-EasyMQL Team - pakrohk@github.com
-
-Project Link: [https://github.com/EvolveBeyond/EasyMQL](https://github.com/EvolveBeyond/EasyMQL)
-
-## 🙏 Acknowledgments
-
-- MQL5 Community for inspiration and feedback
-- MetaQuotes for the MQL5 platform
-- All contributors who help make this framework better
+Copyright 2026, EvolveBeyond

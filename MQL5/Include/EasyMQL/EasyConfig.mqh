@@ -1,18 +1,20 @@
 //+------------------------------------------------------------------+
 //|                                              EasyMQL Config      |
-//|                                    Copyright 2026, EasyMQL Team  |
+//|                                    Copyright 2026, EvolveBeyond  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2026, EasyMQL Team"
+#property copyright "Copyright 2026, EvolveBeyond"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
-
-#include <EasyCore.mqh>
-#include <EasyHelpers.mqh>
 
 // Forward declarations
 class EasyConfig;
 class EasyEventManager;
+
+
+
+#include <EasyCore.mqh>
+#include <EasyHelpers.mqh>
 
 //+------------------------------------------------------------------+
 //| Configuration Parameter Class                                    |
@@ -170,12 +172,140 @@ void ConfigParam::SetBool(bool value)
 }
 
 //+------------------------------------------------------------------+
-//| Easy Configuration Class                                         |
+//| Typed Configuration Parameter Class with Validation             |
+//+------------------------------------------------------------------+
+class TypedConfigParam : public ConfigParam
+{
+private:
+   bool                m_required;          // Is this parameter required?
+   double              m_min_value;         // Minimum value for validation
+   double              m_max_value;         // Maximum value for validation
+   string              m_validation_error;  // Last validation error
+
+public:
+                     TypedConfigParam(void);
+                     TypedConfigParam(string name, double value, string desc = "", 
+                                     bool required = false, double min_val = -DBL_MAX, double max_val = DBL_MAX);
+                     TypedConfigParam(string name, int value, string desc = "", 
+                                     bool required = false, int min_val = INT_MIN, int max_val = INT_MAX);
+                     TypedConfigParam(string name, string value, string desc = "", bool required = false);
+                     TypedConfigParam(string name, bool value, string desc = "", bool required = false);
+                     ~TypedConfigParam(void);
+   
+   // Validation methods
+   bool               validate(void);
+   bool               isValid(void) const { return validate(); }
+   string             getValidationError(void) const { return m_validation_error; }
+   
+   // Fluent setters for validation
+   TypedConfigParam&  setRequired(bool required);
+   TypedConfigParam&  setRange(double min_val, double max_val);
+   TypedConfigParam&  setRange(int min_val, int max_val);
+};
+
+//+------------------------------------------------------------------+
+//| Typed Configuration Parameter Implementation                     |
+//+------------------------------------------------------------------+
+
+// Constructors
+TypedConfigParam::TypedConfigParam(void) : ConfigParam()
+{
+   m_required = false;
+   m_min_value = -DBL_MAX;
+   m_max_value = DBL_MAX;
+   m_validation_error = "";
+}
+
+TypedConfigParam::TypedConfigParam(string name, double value, string desc, 
+                                 bool required, double min_val, double max_val) : ConfigParam(name, value, desc)
+{
+   m_required = required;
+   m_min_value = min_val;
+   m_max_value = max_val;
+   m_validation_error = "";
+}
+
+TypedConfigParam::TypedConfigParam(string name, int value, string desc, 
+                                 bool required, int min_val, int max_val) : ConfigParam(name, (double)value, desc)
+{
+   m_required = required;
+   m_min_value = (double)min_val;
+   m_max_value = (double)max_val;
+   m_validation_error = "";
+}
+
+TypedConfigParam::TypedConfigParam(string name, string value, string desc, bool required) : ConfigParam(name, value, desc)
+{
+   m_required = required;
+   m_min_value = -DBL_MAX;
+   m_max_value = DBL_MAX;
+   m_validation_error = "";
+}
+
+TypedConfigParam::TypedConfigParam(string name, bool value, string desc, bool required) : ConfigParam(name, value, desc)
+{
+   m_required = required;
+   m_min_value = -DBL_MAX;
+   m_max_value = DBL_MAX;
+   m_validation_error = "";
+}
+
+TypedConfigParam::~TypedConfigParam(void)
+{
+}
+
+// Validation methods
+bool TypedConfigParam::validate(void)
+{
+   if(m_type == TYPE_DOUBLE || m_type == TYPE_INT)
+   {
+      double val = (m_type == TYPE_DOUBLE) ? GetDouble() : (double)GetInt();
+      if(val < m_min_value || val > m_max_value)
+      {
+         m_validation_error = "Value " + DoubleToString(val) + " out of range [" + 
+                            DoubleToString(m_min_value) + ", " + DoubleToString(m_max_value) + "] for parameter '" + GetName() + "'";
+         return false;
+      }
+   }
+   
+   if(m_required && m_type == TYPE_STRING && GetString() == "")
+   {
+      m_validation_error = "Required string parameter '" + GetName() + "' is empty";
+      return false;
+   }
+   
+   m_validation_error = "";
+   return true;
+}
+
+// Fluent setters
+TypedConfigParam& TypedConfigParam::setRequired(bool required)
+{
+   m_required = required;
+   return *this;
+}
+
+TypedConfigParam& TypedConfigParam::setRange(double min_val, double max_val)
+{
+   m_min_value = min_val;
+   m_max_value = max_val;
+   return *this;
+}
+
+TypedConfigParam& TypedConfigParam::setRange(int min_val, int max_val)
+{
+   m_min_value = (double)min_val;
+   m_max_value = (double)max_val;
+   return *this;
+}
+
+//+------------------------------------------------------------------+
+//| Typed Easy Configuration Class with Validation                   |
 //+------------------------------------------------------------------+
 class EasyConfig
 {
 private:
-   ConfigParam         m_params[64];        // Configuration parameters
+   TypedConfigParam    m_params[64];        // Configuration parameters with validation
    int                 m_param_count;       // Number of parameters
    string              m_config_name;       // Configuration name
    string              m_config_desc;       // Configuration description
@@ -185,11 +315,13 @@ public:
                      EasyConfig(string name, string desc = "");
                      ~EasyConfig(void);
    
-   // Parameter management
-   EasyConfig&        addParam(string name, double value, string desc = "");
-   EasyConfig&        addParamInt(string name, int value, string desc = "");
-   EasyConfig&        addParamString(string name, string value, string desc = "");
-   EasyConfig&        addParamBool(string name, bool value, string desc = "");
+   // Parameter management with validation
+   EasyConfig&        addParam(string name, double value, string desc = "", 
+                           bool required = false, double min_val = -DBL_MAX, double max_val = DBL_MAX);
+   EasyConfig&        addParamInt(string name, int value, string desc = "", 
+                             bool required = false, int min_val = INT_MIN, int max_val = INT_MAX);
+   EasyConfig&        addParamString(string name, string value, string desc = "", bool required = false);
+   EasyConfig&        addParamBool(string name, bool value, string desc = "", bool required = false);
    
    // Parameter retrieval
    double             getDouble(string name, double default_val = 0.0);
@@ -209,7 +341,9 @@ public:
    int                getParamCount(void) const { return m_param_count; }
    
    // Validation
-   bool               validate(void);
+   bool               validate(void);      // Validate all parameters
+   bool               validateParam(string name); // Validate specific parameter
+   void               logValidationErrors(void); // Log all validation errors
    bool               loadFromFile(string filename);
    bool               saveToFile(string filename);
 };
@@ -242,27 +376,27 @@ EasyConfig::~EasyConfig(void)
 }
 
 //+------------------------------------------------------------------+
-//| Add double parameter                                             |
+//| Add double parameter with validation                             |
 //+------------------------------------------------------------------+
-EasyConfig& EasyConfig::addParam(string name, double value, string desc)
+EasyConfig& EasyConfig::addParam(string name, double value, string desc, bool required, double min_val, double max_val)
 {
    if(m_param_count >= 64)
       return *this;
       
-   m_params[m_param_count] = ConfigParam(name, value, desc);
+   m_params[m_param_count] = TypedConfigParam(name, value, desc, required, min_val, max_val);
    m_param_count++;
    return *this;
 }
 
 //+------------------------------------------------------------------+
-//| Add integer parameter                                            |
+//| Add integer parameter with validation                            |
 //+------------------------------------------------------------------+
-EasyConfig& EasyConfig::addParamInt(string name, int value, string desc)
+EasyConfig& EasyConfig::addParamInt(string name, int value, string desc, bool required, int min_val, int max_val)
 {
    if(m_param_count >= 64)
       return *this;
       
-   m_params[m_param_count] = ConfigParam(name, value, desc);
+   m_params[m_param_count] = TypedConfigParam(name, value, desc, required, min_val, max_val);
    m_param_count++;
    return *this;
 }
@@ -270,12 +404,12 @@ EasyConfig& EasyConfig::addParamInt(string name, int value, string desc)
 //+------------------------------------------------------------------+
 //| Add string parameter                                             |
 //+------------------------------------------------------------------+
-EasyConfig& EasyConfig::addParamString(string name, string value, string desc)
+EasyConfig& EasyConfig::addParamString(string name, string value, string desc, bool required)
 {
    if(m_param_count >= 64)
       return *this;
       
-   m_params[m_param_count] = ConfigParam(name, value, desc);
+   m_params[m_param_count] = TypedConfigParam(name, value, desc, required);
    m_param_count++;
    return *this;
 }
@@ -283,12 +417,12 @@ EasyConfig& EasyConfig::addParamString(string name, string value, string desc)
 //+------------------------------------------------------------------+
 //| Add boolean parameter                                            |
 //+------------------------------------------------------------------+
-EasyConfig& EasyConfig::addParamBool(string name, bool value, string desc)
+EasyConfig& EasyConfig::addParamBool(string name, bool value, string desc, bool required)
 {
    if(m_param_count >= 64)
       return *this;
       
-   m_params[m_param_count] = ConfigParam(name, value, desc);
+   m_params[m_param_count] = TypedConfigParam(name, value, desc, required);
    m_param_count++;
    return *this;
 }
@@ -300,7 +434,8 @@ double EasyConfig::getDouble(string name, double default_val)
 {
    for(int i = 0; i < m_param_count; i++)
    {
-      if(m_params[i].GetName() == name && m_params[i].GetType() == ConfigParam::TYPE_DOUBLE)
+      if(m_params[i].GetName() == name && (m_params[i].GetType() == ConfigParam::TYPE_DOUBLE || 
+                                        m_params[i].GetType() == ConfigParam::TYPE_INT))
       {
          return m_params[i].GetDouble();
       }
@@ -360,7 +495,8 @@ bool EasyConfig::setDouble(string name, double value)
 {
    for(int i = 0; i < m_param_count; i++)
    {
-      if(m_params[i].GetName() == name && m_params[i].GetType() == ConfigParam::TYPE_DOUBLE)
+      if(m_params[i].GetName() == name && (m_params[i].GetType() == ConfigParam::TYPE_DOUBLE || 
+                                        m_params[i].GetType() == ConfigParam::TYPE_INT))
       {
          m_params[i].SetDouble(value);
          return true;
@@ -422,9 +558,44 @@ bool EasyConfig::setBool(string name, bool value)
 //+------------------------------------------------------------------+
 bool EasyConfig::validate(void)
 {
-   // Add validation logic here
-   // For now, just return true
-   return true;
+   bool all_valid = true;
+   for(int i = 0; i < m_param_count; i++)
+   {
+      if(!m_params[i].validate())
+      {
+         EasyHelpers::logWarning("Config validation failed: " + m_params[i].getValidationError());
+         all_valid = false;
+      }
+   }
+   return all_valid;
+}
+
+bool EasyConfig::validateParam(string name)
+{
+   for(int i = 0; i < m_param_count; i++)
+   {
+      if(m_params[i].GetName() == name)
+      {
+         bool is_valid = m_params[i].validate();
+         if(!is_valid)
+         {
+            EasyHelpers::logWarning("Config validation failed: " + m_params[i].getValidationError());
+         }
+         return is_valid;
+      }
+   }
+   return false; // Parameter not found
+}
+
+void EasyConfig::logValidationErrors(void)
+{
+   for(int i = 0; i < m_param_count; i++)
+   {
+      if(!m_params[i].validate())
+      {
+         EasyHelpers::logWarning("Config validation error: " + m_params[i].getValidationError());
+      }
+   }
 }
 
 //+------------------------------------------------------------------+

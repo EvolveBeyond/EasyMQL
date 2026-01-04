@@ -1,241 +1,129 @@
 //+------------------------------------------------------------------+
-//|                                           SimpleMACrossEA.mq5    |
-//|                                    Copyright 2026, EasyMQL Team  |
+//|                                      Simple Moving Average EA    |
+//|                                    Copyright 2026, EvolveBeyond  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2026, EasyMQL Team"
+#property copyright "Copyright 2026, EvolveBeyond"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
-#property strict
 
 #include <EasyMQL/EasyMQL.mqh>
 
 // Input parameters
-input double InpLots = 0.1;              // Lot size
-input int InpFastMAPeriod = 10;          // Fast MA Period
-input int InpSlowMAPeriod = 20;          // Slow MA Period
-input int InpStopLoss = 100;             // Stop Loss in points
-input int InpTakeProfit = 200;           // Take Profit in points
+input double InpLots = 0.1;
+input int InpMAPeriod = 14;
+input int InpMagicNumber = 123456;
 
-// Simple MA Crossover Expert Advisor Example
-class SimpleMACrossEA : public EasyExpert
+// Simple MA Trading Strategy
+class MATradingStrategy : public EasyStrategy
 {
-private:
-   int                 m_fast_period;       // Fast MA period
-   int                 m_slow_period;       // Slow MA period
-   double              m_fast_ma[10000];    // Fast MA values
-   double              m_slow_ma[10000];    // Slow MA values
-
 public:
-                     SimpleMACrossEA(void);
-                     ~SimpleMACrossEA(void);
+   MATradingStrategy() : EasyStrategy("MA Strategy") {}
    
-   // Override required methods
-   virtual bool       onSetup(void);
-   virtual void       onTick(void);
-   
-private:
-   bool               CheckForSignals(void);
-   bool               CalculateMASignals(void);
+   void onTick()
+   {
+      // Get current prices using the Python-like macros
+      double current_close = C(0);
+      double current_high = H(0);
+      double current_low = L(0);
+      
+      // Calculate simple moving average
+      double ma_value = MA(InpMAPeriod, 0);  // MA with period InpMAPeriod, current bar (0)
+      
+      // Trading logic
+      if(current_close > ma_value && current_close > C(1) && C(1) <= MA(InpMAPeriod, 1))
+      {
+         // Price crossed above MA - potential buy signal
+         if(!hasPositionBySymbol(_Symbol))
+         {
+            openBuy(InpLots);
+            EasyHelpers::logInfo("Buy signal: Price " + DoubleToString(current_close) + " above MA " + DoubleToString(ma_value));
+         }
+      }
+      else if(current_close < ma_value && current_close < C(1) && C(1) >= MA(InpMAPeriod, 1))
+      {
+         // Price crossed below MA - potential sell signal
+         if(!hasPositionBySymbol(_Symbol))
+         {
+            openSell(InpLots);
+            EasyHelpers::logInfo("Sell signal: Price " + DoubleToString(current_close) + " below MA " + DoubleToString(ma_value));
+         }
+      }
+      
+      // Close opposite positions
+      if(hasPositionBySymbol(_Symbol))
+      {
+         if(getPositionType() == POSITION_TYPE_BUY && current_close < MA(InpMAPeriod, 0))
+         {
+            closeAll();
+            EasyHelpers::logInfo("Closed buy position: Price below MA");
+         }
+         else if(getPositionType() == POSITION_TYPE_SELL && current_close > MA(InpMAPeriod, 0))
+         {
+            closeAll();
+            EasyHelpers::logInfo("Closed sell position: Price above MA");
+         }
+      }
+   }
 };
 
-//+------------------------------------------------------------------+
-//| Constructor                                                      |
-//+------------------------------------------------------------------+
-SimpleMACrossEA::SimpleMACrossEA(void)
+// Main Expert Advisor class
+class SimpleMAEA : public EasyExpert
 {
-   m_fast_period = 10;
-   m_slow_period = 20;
-   
-   ArrayInitialize(m_fast_ma, 0.0);
-   ArrayInitialize(m_slow_ma, 0.0);
-}
+private:
+   MATradingStrategy* ma_strategy;
 
-//+------------------------------------------------------------------+
-//| Destructor                                                       |
-//+------------------------------------------------------------------+
-SimpleMACrossEA::~SimpleMACrossEA(void)
-{
-}
-
-//+------------------------------------------------------------------+
-//| Setup method - called once at initialization                     |
-//+------------------------------------------------------------------+
-bool SimpleMACrossEA::onSetup(void)
-{
-   // Configure the EA with input parameters using chainable methods
-   setLots(InpLots)
-      .setStopLoss(InpStopLoss)
-      .setTakeProfit(InpTakeProfit)
-      .setMagic(123456);  // Unique magic number for this EA
-   
-   // Set our local parameters
-   m_fast_period = InpFastMAPeriod;
-   m_slow_period = InpSlowMAPeriod;
-   
-   EasyHelpers::logInfo("Simple MA Cross EA initialized");
-   EasyHelpers::logInfo("Fast MA: " + IntegerToString(m_fast_period) + 
-                       ", Slow MA: " + IntegerToString(m_slow_period));
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Tick method - called on each new tick                            |
-//+------------------------------------------------------------------+
-void SimpleMACrossEA::onTick(void)
-{
-   // Only process if we have enough bars
-   if(Bars(Symbol(), PERIOD_CURRENT) < m_slow_period + 5)
-      return;
-   
-   // Check for trading signals
-   CheckForSignals();
-}
-
-//+------------------------------------------------------------------+
-//| Check for buy/sell signals                                       |
-//+------------------------------------------------------------------+
-bool SimpleMACrossEA::CheckForSignals(void)
-{
-   // Calculate MA values
-   if(!CalculateMASignals())
-      return false;
-   
-   // Get current and previous MA values
-   double current_fast = m_fast_ma[0];
-   double current_slow = m_slow_ma[0];
-   double prev_fast = m_fast_ma[1];
-   double prev_slow = m_slow_ma[1];
-   
-   // Check for crossover conditions
-   bool bull_cross = (prev_fast <= prev_slow) && (current_fast > current_slow);  // Fast crosses above slow
-   bool bear_cross = (prev_fast >= prev_slow) && (current_fast < current_slow);  // Fast crosses below slow
-   
-   // Trading logic
-   if(bull_cross && !hasPosition())
+public:
+   SimpleMAEA()
    {
-      // Buy signal - fast MA crosses above slow MA
-      EasyHelpers::log("Bullish crossover detected - Opening BUY position");
+      ma_strategy = new MATradingStrategy();
+   }
+
+   bool onSetup()
+   {
+      // Use the chainable API
+      setSymbol(_Symbol)
+         .setLots(InpLots)
+         .setMagic(InpMagicNumber)
+         .setStopLoss(100)  // 100 points stop loss
+         .setTakeProfit(200) // 200 points take profit
+         .Use(ma_strategy); // Register the strategy (multi-strategy support)
       
-      if(openBuy(InpLots))
-      {
-         EasyHelpers::logInfo("BUY position opened successfully");
-      }
-      else
-      {
-         EasyHelpers::logError("Failed to open BUY position: " + IntegerToString(GetLastError()));
-      }
-   }
-   else if(bear_cross && !hasPosition())
-   {
-      // Sell signal - fast MA crosses below slow MA
-      EasyHelpers::log("Bearish crossover detected - Opening SELL position");
+      EasyHelpers::logInfo("Simple MA EA initialized with period: " + IntegerToString(InpMAPeriod));
       
-      if(openSell(InpLots))
+      // Validate configuration
+      EasyConfig& config = EasyServices::Config();
+      config.addParamInt("MAPeriod", InpMAPeriod, "Moving Average Period", true, 1, 1000)
+            .addParam("Lots", InpLots, "Lot Size", true, 0.01, 100.0);
+      
+      if(!config.validate())
       {
-         EasyHelpers::logInfo("SELL position opened successfully");
+         EasyHelpers::logWarning("Configuration validation failed");
       }
-      else
+      
+      return true;
+   }
+
+   void onTick()
+   {
+      // onTick is automatically handled by registered strategies
+      // But we can add additional logic here if needed
+   }
+
+   void onTimer()
+   {
+      // Timer event handling
+   }
+
+   ~SimpleMAEA()
+   {
+      if(ma_strategy != NULL)
       {
-         EasyHelpers::logError("Failed to open SELL position: " + IntegerToString(GetLastError()));
+         delete ma_strategy;
+         ma_strategy = NULL;
       }
    }
-   
-   return true;
-}
+};
 
-//+------------------------------------------------------------------+
-//| Calculate MA signals                                             |
-//+------------------------------------------------------------------+
-bool SimpleMACrossEA::CalculateMASignals(void)
-{
-   // Get the required number of close prices
-   int rates = Bars(Symbol(), PERIOD_CURRENT);
-   if(rates < m_slow_period)
-      return false;
-   
-   // Calculate Fast MA
-   double close_array[10000];
-   ArrayInitialize(close_array, 0.0);
-   
-   for(int i = 0; i < rates; i++)
-   {
-      close_array[i] = EasyHelpers::close(i);
-   }
-   
-   // Calculate Fast MA
-   double fast_ma_temp[10000];
-   ArrayInitialize(fast_ma_temp, 0.0);
-   if(!EasyHelpers::sma(close_array, m_fast_period, fast_ma_temp))
-      return false;
-   
-   // Copy to our internal array
-   for(int i = 0; i < rates; i++)
-   {
-      m_fast_ma[i] = fast_ma_temp[i];
-   }
-   
-   // Calculate Slow MA
-   double slow_ma_temp[10000];
-   ArrayInitialize(slow_ma_temp, 0.0);
-   if(!EasyHelpers::sma(close_array, m_slow_period, slow_ma_temp))
-      return false;
-   
-   // Copy to our internal array
-   for(int i = 0; i < rates; i++)
-   {
-      m_slow_ma[i] = slow_ma_temp[i];
-   }
-   
-   return true;
-}
-
-// Global instance of our EA
-SimpleMACrossEA g_ea;
-
-//+------------------------------------------------------------------+
-//| Expert initialization function                                   |
-//+------------------------------------------------------------------+
-int OnInit()
-{
-   // Set the global expert instance
-   setExpertInstance(&g_ea);
-   
-   // Let the framework handle initialization
-   return AutoEventHandler::HandleOnInit() ? INIT_SUCCEEDED : INIT_FAILED;
-}
-
-//+------------------------------------------------------------------+
-//| Expert deinitialization function                                 |
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
-{
-   // Close all positions on deinitialization
-   if(g_ea.hasPosition())
-   {
-      g_ea.closeAll();
-      EasyHelpers::logInfo("All positions closed on deinitialization");
-   }
-   
-   // Let the framework handle deinitialization
-   AutoEventHandler::HandleOnDeinit(reason);
-}
-
-//+------------------------------------------------------------------+
-//| Expert tick function                                             |
-//+------------------------------------------------------------------+
-void OnTick()
-{
-   // Let the framework handle the tick
-   AutoEventHandler::HandleOnTick();
-}
-
-//+------------------------------------------------------------------+
-//| Timer function (if needed)                                       |
-//+------------------------------------------------------------------+
-void OnTimer()
-{
-   // Let the framework handle the timer if needed
-   AutoEventHandler::HandleOnTimer();
-}
+// Use the auto-registration macro - no need for manual OnInit/OnDeinit/OnTick
+EASY_EXPERT(SimpleMAEA)

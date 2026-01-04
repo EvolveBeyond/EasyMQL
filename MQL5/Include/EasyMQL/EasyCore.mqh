@@ -1,9 +1,9 @@
 //+------------------------------------------------------------------+
 //|                                                 EasyMQL Core     |
-//|                                    Copyright 2026, EasyMQL Team  |
+//|                                    Copyright 2026, EvolveBeyond  |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2026, EasyMQL Team"
+#property copyright "Copyright 2026, EvolveBeyond"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
 
@@ -11,6 +11,8 @@
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
 #include <Trade/OrderInfo.mqh>
+#include <EasyConfig.mqh>
+#include <EasyHelpers.mqh>
 
 // Enums for readability
 enum DrawType
@@ -135,6 +137,7 @@ private:
    Color               m_buffer_colors[32]; // Buffer colors
    int                 m_buffer_widths[32]; // Buffer widths
    string              m_buffer_names[32];  // Buffer names
+   int                 m_used_buffers;      // Number of used buffers
    int                 m_drawings[32];      // Drawing handles
    string              m_property_names[32]; // Property names
    double              m_property_values[32]; // Property values
@@ -145,12 +148,35 @@ protected:
    int                 m_total_calculated;  // Total calculated bars
 
 public:
+   // Public access methods for buffer data (needed for macro access)
+   double* GetBufferArray(int index) { 
+      if(index >= 0 && index < 32) return m_buffer_data[index]; 
+      return NULL; 
+   }
+   DrawType GetBufferDrawType(int index) { 
+      if(index >= 0 && index < 32) return m_buffer_types[index]; 
+      return None; 
+   }
+   Color GetBufferColor(int index) { 
+      if(index >= 0 && index < 32) return m_buffer_colors[index]; 
+      return None; 
+   }
+   int GetBufferWidth(int index) { 
+      if(index >= 0 && index < 32) return m_buffer_widths[index]; 
+      return 1; 
+   }
+   string GetBufferName(int index) { 
+      if(index >= 0 && index < 32) return m_buffer_names[index]; 
+      return ""; 
+   }
+
+public:
                      EasyIndicator(void);
                      ~EasyIndicator(void);
    virtual bool       Initialize(void);
    virtual void       Deinitialize(void);
    
-   // Setup methods
+   // Setup methods with chainable (fluent) API
    EasyIndicator&     setTitle(string title);
    EasyIndicator&     addBuffer(DrawType type, Color color = None, int width = 1, string name = "");
    EasyIndicator&     setBuffer(int index, double &data[]);
@@ -163,7 +189,7 @@ public:
    
    // Framework methods
    bool               RegisterBuffers(void);
-   bool               SetIndexBuffer(int index, double &buffer, int type = TYPE_MAIN);
+   bool               SetIndexBuffer(int index, double &buffer, int type = DRAW_LINE);
    bool               PlotIndex(int index, int shift, double value);
    double             GetBufferValue(int buffer_index, int bar_index);
    
@@ -181,6 +207,7 @@ EasyIndicator::EasyIndicator(void)
    m_title = "Easy Indicator";
    m_buffer_size = 10000;
    m_total_calculated = 0;
+   m_used_buffers = 0;
    
    for(int i = 0; i < 32; i++)
    {
@@ -360,9 +387,59 @@ bool EasyIndicator::RegisterBuffers(void)
    for(int i = 0; i < m_total_buffers; i++)
    {
       // Set up the indicator buffer
-      if(!SetIndexBuffer(i, m_buffer_data[i]))
+      if(!SetIndexBuffer(i, m_buffer_data[i], (int)m_buffer_types[i]))
          return false;
+      
+      // Set buffer properties
+      if(m_buffer_colors[i] != None)
+      {
+         PlotIndexSetInteger(i, PLOT_LINE_COLOR, m_buffer_colors[i]);
+      }
+      
+      if(m_buffer_widths[i] > 1)
+      {
+         PlotIndexSetInteger(i, PLOT_LINE_WIDTH, m_buffer_widths[i]);
+      }
+      
+      if(m_buffer_names[i] != "")
+      {
+         PlotIndexSetString(i, PLOT_LABEL, m_buffer_names[i]);
+      }
+      
+      // Set the draw type based on buffer type
+      int draw_type = DRAW_LINE;
+      switch(m_buffer_types[i])
+      {
+         case Line:
+            draw_type = DRAW_LINE;
+            break;
+         case Histogram:
+            draw_type = DRAW_HISTOGRAM;
+            break;
+         case Arrow:
+            draw_type = DRAW_ARROW;
+            break;
+         case Dots:
+            draw_type = DRAW_SECTION;
+            break;
+         case Background:
+            draw_type = DRAW_BACKGROUND;
+            break;
+         default:
+            draw_type = DRAW_LINE;
+            break;
+      }
+      PlotIndexSetInteger(i, PLOT_DRAW_TYPE, draw_type);
    }
+   
+   // Set indicator short name
+   if(m_title != "Easy Indicator")
+   {
+      IndicatorSetString(INDICATOR_SHORTNAME, m_title);
+   }
+   
+   // Set indicator digits
+   IndicatorSetInteger(INDICATOR_DIGITS, (int)_Digits);
    
    return true;
 }
@@ -372,10 +449,10 @@ bool EasyIndicator::RegisterBuffers(void)
 //+------------------------------------------------------------------+
 bool EasyIndicator::SetIndexBuffer(int index, double &buffer, int type)
 {
-   if(SetIndexBuffer(index, buffer, type))
+   if(index >= 0 && index < 32)
    {
-      m_buffers[index] = index; // Store as a simple reference
-      return true;
+      m_buffers[index] = SetIndexBuffer(index, buffer, type);
+      return (m_buffers[index] != 0);
    }
    return false;
 }
@@ -420,6 +497,8 @@ private:
    int                 m_trailing_stop;     // Trailing stop in points
    int                 m_take_profit;       // Take profit in points
    int                 m_stop_loss;         // Stop loss in points
+   EasyStrategy*       m_strategies[16];      // Strategy array for multi-strategy support
+   int                 m_strategy_count;      // Number of registered strategies
 
 protected:
    bool                m_is_ticking;        // Tick processing flag
@@ -439,6 +518,7 @@ public:
    EasyExpert&        setStopLoss(int points);
    EasyExpert&        setTakeProfit(int points);
    EasyExpert&        setTrailingStop(int points);
+   EasyExpert&        Use(EasyStrategy* strategy);
    
    // Trading methods
    bool               openBuy(double lots = 0.0, double price = 0.0, int slippage = 0, 
@@ -489,6 +569,12 @@ EasyExpert::EasyExpert(void)
    m_take_profit = 0;
    m_stop_loss = 0;
    m_is_ticking = false;
+   m_strategy_count = 0;
+   
+   // Initialize strategy array
+   for(int i = 0; i < 16; i++) {
+      m_strategies[i] = NULL;
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -519,6 +605,16 @@ bool EasyExpert::Initialize(void)
 //+------------------------------------------------------------------+
 void EasyExpert::Deinitialize(void)
 {
+   // Clean up strategies to prevent memory leaks
+   for(int i = 0; i < m_strategy_count; i++) {
+      if(m_strategies[i] != NULL) {
+         m_strategies[i]->onDeinit(0); // Pass reason as 0
+         delete m_strategies[i];
+         m_strategies[i] = NULL;
+      }
+   }
+   m_strategy_count = 0;
+   
    EasyMQL::Deinitialize();
 }
 
@@ -593,6 +689,19 @@ EasyExpert& EasyExpert::setTakeProfit(int points)
 EasyExpert& EasyExpert::setTrailingStop(int points)
 {
    m_trailing_stop = points;
+   return *this;
+}
+
+//+------------------------------------------------------------------+
+//| Register a strategy for multi-strategy support                   |
+//+------------------------------------------------------------------+
+EasyExpert& EasyExpert::Use(EasyStrategy* strategy)
+{
+   if(m_strategy_count < 16 && strategy != NULL)
+   {
+      m_strategies[m_strategy_count] = strategy;
+      m_strategy_count++;
+   }
    return *this;
 }
 
@@ -839,6 +948,15 @@ bool EasyExpert::onSetup(void)
 //+------------------------------------------------------------------+
 void EasyExpert::onTick(void)
 {
+   // Call all registered strategies
+   for(int i = 0; i < m_strategy_count; i++)
+   {
+      if(m_strategies[i] != NULL && m_strategies[i]->isEnabled())
+      {
+         m_strategies[i]->onTick();
+      }
+   }
+   
    // Override in derived class
 }
 
@@ -847,7 +965,101 @@ void EasyExpert::onTick(void)
 //+------------------------------------------------------------------+
 void EasyExpert::onTimer(void)
 {
+   // Call all registered strategies
+   for(int i = 0; i < m_strategy_count; i++)
+   {
+      if(m_strategies[i] != NULL && m_strategies[i]->isEnabled())
+      {
+         m_strategies[i]->onTimer();
+      }
+   }
+   
    // Override in derived class
+}
+
+//+------------------------------------------------------------------+
+//| Lightweight Dependency Injection / Service Access Class           |
+//+------------------------------------------------------------------+
+class EasyServices
+{
+public:
+   static EasyConfig&     Config(void) { return g_config; }
+   static EasyEventManager& Events(void) { return g_event_manager; }
+   static EasyIndicator*    Indicator(void) { return g_indicator_instance; }
+   static EasyExpert*       Expert(void) { return g_expert_instance; }
+};
+
+//+------------------------------------------------------------------+
+//| Strategy Base Class for Multi-Strategy Support                   |
+//+------------------------------------------------------------------+
+class EasyStrategy
+{
+protected:
+   string              m_name;              // Strategy name
+   bool                m_enabled;           // Is strategy enabled
+
+public:
+                     EasyStrategy(string name = "Strategy");
+   virtual           ~EasyStrategy(void);
+   
+   virtual void       onTick(void);         // Override in derived class
+   virtual void       onTimer(void);       // Override in derived class
+   virtual void       onDeinit(int reason); // Override in derived class
+   
+   // Management methods
+   EasyStrategy&      setName(string name);
+   EasyStrategy&      setEnabled(bool enabled);
+   string             getName(void) const { return m_name; }
+   bool               isEnabled(void) const { return m_enabled; }
+};
+
+//+------------------------------------------------------------------+
+//| Constructor                                                      |
+//+------------------------------------------------------------------+
+EasyStrategy::EasyStrategy(string name)
+{
+   m_name = name;
+   m_enabled = true;
+}
+
+//+------------------------------------------------------------------+
+//| Destructor                                                       |
+//+------------------------------------------------------------------+
+EasyStrategy::~EasyStrategy(void)
+{
+}
+
+//+------------------------------------------------------------------+
+//| Virtual methods                                                  |
+//+------------------------------------------------------------------+
+void EasyStrategy::onTick(void)
+{
+   // Override in derived class
+}
+
+void EasyStrategy::onTimer(void)
+{
+   // Override in derived class
+}
+
+void EasyStrategy::onDeinit(int reason)
+{
+   // Override in derived class
+}
+
+//+------------------------------------------------------------------+
+//| Management methods                                               |
+//+------------------------------------------------------------------+
+EasyStrategy& EasyStrategy::setName(string name)
+{
+   m_name = name;
+   return *this;
+}
+
+EasyStrategy& EasyStrategy::setEnabled(bool enabled)
+{
+   m_enabled = enabled;
+   return *this;
 }
 
 // Global instance pointers for event handling
